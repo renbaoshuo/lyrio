@@ -5,8 +5,9 @@ import moment from "moment";
 import { ParticipantDetail } from "@/contest/contest-participant.entity";
 import { ContestTypeServiceInterface } from "@/contest/contest-type-service.interface";
 import { restrictProperties } from "@/common/restrict-properties";
-import { SubmissionBasicMetaDto } from "@/submission/dto";
 import { SubmissionStatus } from "@/submission/submission-status.enum";
+
+import { SubmissionBasicMetaDto } from "@/submission/dto";
 
 interface ContestTypeOptionsIcpc {
   penaltyTime: number;
@@ -52,9 +53,19 @@ export class ContestTypeIcpcService
     if (problemInfo.calculatedTime != null) return;
 
     if (submission.status !== SubmissionStatus.Accepted) problemInfo.failedAttempts++;
-    else
+    else {
       problemInfo.calculatedTime =
         moment(submission.submitTime).diff(startTime, "second") +
         problemInfo.failedAttempts * contestTypeOptions.penaltyTime;
+
+      // Update score: score represents the number of accepted problems in ICPC
+      detail.score = (detail.score || 0) + 1;
+      detail.usedSubmissionIdForProblem[problemId] = submission.id;
+
+      // Calculate total penalty time by summing up all calculatedTime values
+      detail.totalPenaltyTime = Object.values(detail.info)
+        .filter(info => info.calculatedTime != null)
+        .reduce((sum, info) => sum + info.calculatedTime, 0);
+    }
   }
 }

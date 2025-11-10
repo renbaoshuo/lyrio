@@ -5,12 +5,10 @@ import { Locale } from "@/common/locale.type";
 import { ContestMetaDto } from "./contest-meta.dto";
 import { ContestAnnouncementDto } from "./contest-announcement.dto";
 import { ContestIssueDto } from "./contest-issue.dto";
-import { ContestPermissionType, ContestUserRole } from "../contest.service";
 
 import { ProblemMetaDto } from "@/problem/dto";
 
-Error.stackTraceLimit = 999;
-console.log(new Error)
+import { ContestPermissionType, ContestUserRole } from "../contest.service";
 
 export enum GetContestResponseError {
   NO_SUCH_CONTEST = "NO_SUCH_CONTEST",

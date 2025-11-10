@@ -29,7 +29,7 @@ import { SubmissionProgressVisibility } from "@/submission/submission-progress.g
 import { BackgroundTaskProgressService } from "@/push/background-task-progress.service";
 import { doGroupedBatchOperation } from "@/common/do-grouped-batch-operation";
 
-import { ContestEntity, ContestPublicness } from "./contest.entity";
+import { ContestEntity, ContestPublicness, ContestType } from "./contest.entity";
 import { ContestAnnouncementEntity } from "./contest-announcement.entity";
 import { ContestProblemEntity } from "./contest-problem.entity";
 import { ContestParticipantEntity } from "./contest-participant.entity";
@@ -53,9 +53,6 @@ export enum ContestPermissionType {
   Inspect = "Inspect",
   Modify = "Modify"
 }
-
-Error.stackTraceLimit = 999;
-console.log(new Error)
 
 export enum ContestUserRole {
   Participant = "Participant",
@@ -567,7 +564,25 @@ export class ContestService {
   /**
    * @return `ContestEntity` or error.
    */
-  async createContest(contestInformation: ContestInformationDto): Promise<ContestEntity | "INVALID_CONTEST_TYPE_OPTIONS" | "NO_SUCH_PROBLEM"> {
+  async createContest(contestInformation: ContestInformationDto): Promise<ContestEntity | "INVALID_CONTEST_TYPE_OPTIONS" | "NO_SUCH_PROBLEM" | "INVALID_TIME_RANGE" | "EMPTY_PROBLEM_LIST"> {
+    // Validate time range
+    const startTime = new Date(contestInformation.startTime);
+    const endTime = new Date(contestInformation.endTime);
+    if (isNaN(startTime.getTime()) || isNaN(endTime.getTime()) || endTime <= startTime) {
+      return "INVALID_TIME_RANGE";
+    }
+
+    // Validate participantDuration if present
+    if (contestInformation.participantDuration != null &&
+        (contestInformation.participantDuration <= 0 || !Number.isSafeInteger(contestInformation.participantDuration))) {
+      return "INVALID_TIME_RANGE";
+    }
+
+    // Validate problem list is not empty
+    if (!contestInformation.problems || contestInformation.problems.length === 0) {
+      return "EMPTY_PROBLEM_LIST";
+    }
+
     if (
       !this.contestTypeFactoryService
         .type(contestInformation.type)
@@ -581,8 +596,8 @@ export class ContestService {
       return await this.connection.transaction("READ COMMITTED", async transactionalEntityManager => {
         const contest = new ContestEntity();
         contest.type = contestInformation.type;
-        contest.startTime = new Date(contestInformation.startTime);
-        contest.endTime = new Date(contestInformation.endTime);
+        contest.startTime = startTime;
+        contest.endTime = endTime;
         contest.participantDuration = contestInformation.participantDuration;
         contest.publicness = contestInformation.publicness;
         contest.locales = contestInformation.localizedContents.map(c => c.locale);
@@ -637,8 +652,26 @@ export class ContestService {
     contest: ContestEntity,
     contestInformation: ContestInformationDto
   ): Promise<
-    "NO_SUCH_PROBLEM" | "INVALID_CONTEST_TYPE_OPTIONS" | "SUBMITTED_EARLIER_THAN_NEW_START_TIME" | "DELETING_PROBLEM_SUMITTED"
+    "NO_SUCH_PROBLEM" | "INVALID_CONTEST_TYPE_OPTIONS" | "SUBMITTED_EARLIER_THAN_NEW_START_TIME" | "DELETING_PROBLEM_SUMITTED" | "INVALID_TIME_RANGE" | "EMPTY_PROBLEM_LIST"
   > {
+    // Validate time range
+    const startTime = new Date(contestInformation.startTime);
+    const endTime = new Date(contestInformation.endTime);
+    if (isNaN(startTime.getTime()) || isNaN(endTime.getTime()) || endTime <= startTime) {
+      return "INVALID_TIME_RANGE";
+    }
+
+    // Validate participantDuration if present
+    if (contestInformation.participantDuration != null &&
+        (contestInformation.participantDuration <= 0 || !Number.isSafeInteger(contestInformation.participantDuration))) {
+      return "INVALID_TIME_RANGE";
+    }
+
+    // Validate problem list is not empty
+    if (!contestInformation.problems || contestInformation.problems.length === 0) {
+      return "EMPTY_PROBLEM_LIST";
+    }
+
     if (
       !this.contestTypeFactoryService
         .type(contest.type)
@@ -648,7 +681,7 @@ export class ContestService {
 
     // Check if the contest has submissions
     const submission = await this.submissionService.getEarlistSubmissionOfContest(contest.id);
-    if (submission && submission.submitTime < new Date(contestInformation.startTime)) return "SUBMITTED_EARLIER_THAN_NEW_START_TIME";
+    if (submission && submission.submitTime < startTime) return "SUBMITTED_EARLIER_THAN_NEW_START_TIME";
 
     // Check if any being deleted problems have been submitted
     const contestProblems = await this.contestProblemRepository.find({ contestId: contest.id });
@@ -668,8 +701,8 @@ export class ContestService {
         const newLocales = contestInformation.localizedContents.map(c => c.locale);
         const deletingLocales = contest.locales.filter(locale => !newLocales.includes(locale));
 
-        contest.startTime = new Date(contestInformation.startTime);
-        contest.endTime = new Date(contestInformation.endTime);
+        contest.startTime = startTime;
+        contest.endTime = endTime;
         contest.participantDuration = contestInformation.participantDuration;
         contest.publicness = contestInformation.publicness;
         contest.locales = newLocales;
@@ -935,7 +968,7 @@ export class ContestService {
     return this.backgroundTaskProgressService.startBackgroundTask(
       BACKGROUND_TASK_CONTEST_REJUDGE.format(contest.id),
       async emitProgress => {
-        doGroupedBatchOperation(
+        await doGroupedBatchOperation(
           await this.submissionService.getSubmissionsOfContest(contest.id, problemId),
           async submission => await this.submissionService.rejudgeSubmission(submission),
           20
@@ -952,7 +985,8 @@ export class ContestService {
     const participant = new ContestParticipantEntity();
     participant.contestId = contest.id;
     participant.userId = user.id;
-    if (contest.participantDuration != null) participant.startTime = now;
+    // For virtual contests, use registration time. For normal contests, use contest start time.
+    participant.startTime = contest.participantDuration != null ? now : contest.startTime;
     participant.scoreReal = 0;
     participant.detailReal = { latestSubmissionId: null, usedSubmissionIdForProblem: {}, info: null, score: 0 };
     participant.scoreVisibleDuringContest = 0;
@@ -992,16 +1026,25 @@ export class ContestService {
     takeCount: number
   ): Promise<[result: ContestParticipantEntity[], count: number, firstRank: number]> {
     const scoreColumn = sortByRealScore ? "scoreReal" : "scoreVisibleDuringContest";
-    const [result, count] = await this.contestParticipantRepository.findAndCount({
-      where: {
-        contestId: contest.id
-      },
-      order: {
-        [scoreColumn]: "DESC"
-      },
-      skip: skipCount,
-      take: takeCount
-    });
+    const detailColumn = sortByRealScore ? "detailReal" : "detailVisibleDuringContest";
+
+    // For ICPC contests, sort by score DESC and totalPenaltyTime ASC
+    // For other contest types, just sort by score DESC
+    const contestMeta = await this.getContestMeta(contest);
+    const isIcpc = contestMeta.type === ContestType.ICPC;
+
+    const qb = this.contestParticipantRepository
+      .createQueryBuilder("participant")
+      .where("participant.contestId = :contestId", { contestId: contest.id })
+      .orderBy(`participant.${scoreColumn}`, "DESC");
+
+    // Add secondary sort by totalPenaltyTime for ICPC
+    if (isIcpc) {
+      qb.addOrderBy(`JSON_EXTRACT(participant.${detailColumn}, '$.totalPenaltyTime')`, "ASC");
+    }
+
+    const count = await qb.getCount();
+    const result = await qb.skip(skipCount).take(takeCount).getMany();
 
     const firstRank =
       result.length > 0 &&
@@ -1036,9 +1079,16 @@ export class ContestService {
     if (this.isEnded(contest, now)) return true;
     if (!user) return false;
 
-    const participant = await this.contestParticipantRepository.findOne({ contestId: contest.id, userId: user.id });
-    const endTime = moment(participant.startTime).add(contest.participantDuration, "s").toDate();
-    return now > endTime;
+    // For virtual contests, check individual participant end time
+    if (contest.participantDuration != null) {
+      const participant = await this.contestParticipantRepository.findOne({ contestId: contest.id, userId: user.id });
+      if (!participant || !participant.startTime) return this.isEnded(contest, now);
+      const endTime = moment(participant.startTime).add(contest.participantDuration, "s").toDate();
+      return now > endTime;
+    }
+
+    // For normal contests, same as global isEnded
+    return false;
   }
 
   async onSubmissionUpdated(
@@ -1092,7 +1142,7 @@ export class ContestService {
           const updateFirstAccepted = async (isReal: boolean) => {
             const firstAcceptedSubmissionIdKey = isReal
               ? "firstAcceptedSubmissionIdReal"
-              : "updateFirstAcceptedForRanklistDuringContest";
+              : "firstAcceptedSubmissionIdDuringContest";
             const newAccepted = isReal ? newAcceptedReal : newAcceptedDuringContest;
 
             if (newAccepted) {
@@ -1143,7 +1193,16 @@ export class ContestService {
 
     // Maintain the participant detail
     await this.lockService.lock(`update-contest-participant-detail:${contestId}:${submitterId}`, async () => {
-      const participant = await this.contestParticipantRepository.findOne({ contestId, userId: submissionId });
+      const participant = await this.contestParticipantRepository.findOne({ contestId, userId: submitterId });
+
+      // If participant is null, the user never registered for this contest
+      // This shouldn't happen in normal cases but could occur due to race conditions or data corruption
+      if (!participant) {
+        console.error(
+          `[Contest] Submission ${submissionId} from user ${submitterId} in contest ${contestId} but user is not registered`
+        );
+        return;
+      }
 
       const updateParticipantDetail = async (isReal: boolean) => {
         const detail = isReal ? participant.detailReal : participant.detailVisibleDuringContest;

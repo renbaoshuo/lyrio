@@ -315,15 +315,11 @@ export class ContestController {
       request.takeCount
     );
 
-    const [
-      contestMetas,
-      participantCount,
-      registeredContests
-    ] = await Promise.all([
+    const [contestMetas, participantCount, registeredContests] = await Promise.all([
       Promise.all(contests.map(contest => this.contestService.getContestMeta(contest, request.locale))),
       this.contestService.getContestParticipantCount(contests),
       !currentUser ? null : this.contestService.filterParticipatedContests(contests, currentUser)
-    ])
+    ]);
 
     return {
       contests: contestMetas,
@@ -356,7 +352,7 @@ export class ContestController {
     const contestMeta = await this.contestService.getContestMeta(contest, request.locale);
     const role = await this.contestService.getUserRoleInContest(currentUser, contest);
     if (role === ContestUserRole.Participant && !(await this.contestService.isEndedFor(contest, currentUser))) {
-      const ranklistDuringContest = contestMeta.contestOptions.ranklistDuringContest;
+      const { ranklistDuringContest } = contestMeta.contestOptions;
       if (ranklistDuringContest === "None" || request.realRanklist)
         return {
           error: GetContestResponseError.PERMISSION_DENIED
@@ -375,9 +371,9 @@ export class ContestController {
       this.contestService.getContestLocalizedDescription(contest, descriptionLocale),
       this.problemService
         .findProblemsByExistingIds(contestMeta.problems.map(p => p.problemId))
-        .then(problems =>
+        .then(ps =>
           Promise.all(
-            problems.map(
+            ps.map(
               async problem =>
                 await this.problemService.getProblemMeta(
                   problem,
@@ -391,7 +387,10 @@ export class ContestController {
       // Non-participants normal users will see no issues since they can't publish issue
       !role
         ? null
-        : this.contestService.getContestIssuesAndSubscription(contest, role === ContestUserRole.Participant ? currentUser : null),
+        : this.contestService.getContestIssuesAndSubscription(
+            contest,
+            role === ContestUserRole.Participant ? currentUser : null
+          ),
       this.contestService.getUserPermissions(currentUser, contest)
     ]);
 
@@ -436,23 +435,12 @@ export class ContestController {
 
     const contestMeta = await this.contestService.getContestMeta(contest);
 
-    const [
-      localizedContents,
-      problems,
-    ] = await Promise.all([
+    const [localizedContents, problems] = await Promise.all([
       this.contestService.getContestAllLocalizedContents(contest),
       this.problemService
         .findProblemsByExistingIds(contestMeta.problems.map(p => p.problemId))
-        .then(problems =>
-          Promise.all(
-            problems.map(
-              async problem =>
-                await this.problemService.getProblemMeta(
-                  problem,
-                  request.locale
-                )
-            )
-          )
+        .then(ps =>
+          Promise.all(ps.map(async problem => await this.problemService.getProblemMeta(problem, request.locale)))
         )
     ]);
 
@@ -489,7 +477,11 @@ export class ContestController {
         error: CreateContestAnnouncementResponseError.PERMISSION_DENIED
       };
 
-    const contestAnnouncement = await this.contestService.createContestAnnouncement(contest, currentUser, request.content);
+    const contestAnnouncement = await this.contestService.createContestAnnouncement(
+      contest,
+      currentUser,
+      request.content
+    );
 
     await this.auditService.log("contest.create_announcement", AuditLogObjectType.Contest, contest.id, {
       id: contestAnnouncement.id,
@@ -524,12 +516,12 @@ export class ContestController {
         error: CreateContestIssueResponseError.PERMISSION_DENIED
       };
 
-    if (!this.contestService.isStarted(contest) || await this.contestService.isEndedFor(contest, currentUser))
+    if (!this.contestService.isStarted(contest) || (await this.contestService.isEndedFor(contest, currentUser)))
       return {
         error: CreateContestIssueResponseError.PERMISSION_DENIED
       };
 
-    if (await this.contestService.getUserRoleInContest(currentUser, contest) !== ContestUserRole.Participant)
+    if ((await this.contestService.getUserRoleInContest(currentUser, contest)) !== ContestUserRole.Participant)
       return {
         error: CreateContestIssueResponseError.PERMISSION_DENIED
       };
@@ -578,7 +570,7 @@ export class ContestController {
     const old = {
       replierId: contestIssue.replierId,
       replyTime: contestIssue.replyTime,
-      replyContent: contestIssue.replyContent,
+      replyContent: contestIssue.replyContent
     };
 
     await this.contestService.replyContestIssue(contestIssue, currentUser, request.content);
@@ -658,7 +650,7 @@ export class ContestController {
       issueContent: contestIssue.issueContent,
       replierId: contestIssue.replierId,
       replyTime: contestIssue.replyTime,
-      replyContent: contestIssue.replyContent,
+      replyContent: contestIssue.replyContent
     };
 
     await this.contestService.deleteContestIssue(contestIssue);
@@ -711,26 +703,26 @@ export class ContestController {
       request.takeCount
     );
 
-    const [items, problems] = await Promise.all([
-      Promise.all(
-        participants.map(
-          async (participant, i) =>
-            <RanklistItemDto>{
-              rank: null,
-              user: await this.userService.getUserMeta(
-                await this.userService.findUserById(participant.userId),
-                currentUser
-              ),
-              detail: request.realRanklist ? participant.detailReal : participant.detailVisibleDuringContest
-            }
-        )
-      ),
+    const [users, problems] = await Promise.all([
+      this.userService
+        .findUsersByExistingIds(participants.map(p => p.userId))
+        .then(us => Promise.all(us.map(user => this.userService.getUserMeta(user, currentUser))))
+        .then(us => new Map(us.map(user => [user.id, user]))),
       this.problemService
         .findProblemsByExistingIds(contestMeta.problems.map(p => p.problemId))
-        .then(problems =>
-          Promise.all(problems.map(async problem => await this.problemService.getProblemMeta(problem, request.locale)))
+        .then(ps =>
+          Promise.all(ps.map(async problem => await this.problemService.getProblemMeta(problem, request.locale)))
         )
     ]);
+
+    const items = participants.map(
+      participant =>
+        <RanklistItemDto>{
+          rank: null,
+          user: users.get(participant.userId),
+          detail: request.realRanklist ? participant.detailReal : participant.detailVisibleDuringContest
+        }
+    );
 
     // Fill rank for items
     for (let i = 0; i < items.length; i++)

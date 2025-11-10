@@ -19,6 +19,12 @@ export interface ParticipantDetail<ParticipantDetailInfo> {
    * The participant's total score in the ranlist.
    */
   score: number;
+
+  /**
+   * For ICPC contests: total penalty time (sum of all accepted problems' penalty times).
+   * For other contest types: not used.
+   */
+  totalPenaltyTime?: number;
 }
 
 interface ParticipantDetailWithLatestSubmissionId<ParticipantDetailInfo>
@@ -31,8 +37,8 @@ interface ParticipantDetailWithLatestSubmissionId<ParticipantDetailInfo>
 }
 
 @Entity("contest_participant")
-@Index(["contestId", "userId", "scoreReal"])
-@Index(["contestId", "userId", "scoreVisibleDuringContest"])
+@Index(["contestId", "scoreReal"])
+@Index(["contestId", "scoreVisibleDuringContest"])
 export class ContestParticipantEntity<ParticipantDetailInfo = unknown> {
   @ManyToOne(() => ContestEntity, { onDelete: "CASCADE" })
   @JoinColumn()
