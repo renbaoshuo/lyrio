@@ -98,7 +98,7 @@ export class ContestTypeBasicService
     failedAttemptsBefore: number
   ): number {
     const decreasePerMinute = (fullScore / 500) * 2;
-    const minutesElapsed = Math.floor(moment(startTime).diff(submitTime, "minute"));
+    const minutesElapsed = Math.floor(moment(submitTime).diff(startTime, "minute"));
 
     const decreaseForFailedAttempts = failedAttemptsBefore * 50;
     const decreaseForTime = decreasePerMinute * minutesElapsed;
