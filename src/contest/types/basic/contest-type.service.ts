@@ -40,8 +40,9 @@ export class ContestTypeBasicService
         ([problemId, config]) =>
           !problemIds.includes(Number(problemId)) ||
           !(
-            (config.fullScore > 0 && Number.isSafeInteger(config.fullScore)) ||
-            !(typeof config.fullScoreCodeforcesDecreasing === "boolean")
+            config.fullScore > 0 &&
+            Number.isSafeInteger(config.fullScore) &&
+            typeof config.fullScoreCodeforcesDecreasing === "boolean"
           )
       )
     )
