@@ -24,6 +24,7 @@ import { DiscussionModule } from "./discussion/discussion.module";
 import { MigrationModule } from "./migration/migration.module";
 import { EventReportModule } from "./event-report/event-report.module";
 import { HomepageModule } from "./homepage/homepage.module";
+import { ContestModule } from "./contest/contest.module";
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { HomepageModule } from "./homepage/homepage.module";
     forwardRef(() => DiscussionModule),
     forwardRef(() => EventReportModule),
     forwardRef(() => HomepageModule),
+    forwardRef(() => ContestModule),
     forwardRef(() => MigrationModule)
   ],
   controllers: [AppController],
