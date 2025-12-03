@@ -5,6 +5,7 @@ import { Repository, Connection, QueryBuilder, LessThan } from "typeorm";
 import { ValidationError } from "class-validator";
 import { v4 as uuid } from "uuid";
 import moment from "moment-timezone";
+import { pick } from "lodash";
 
 import { logger } from "@/logger";
 import { ProblemPermissionType, ProblemService } from "@/problem/problem.service";
@@ -31,7 +32,6 @@ import { ConfigService } from "@/config/config.service";
 import { FileEntity } from "@/file/file.entity";
 import { UserPrivilegeService, UserPrivilegeType } from "@/user/user-privilege.service";
 import { ContestEntity } from "@/contest/contest.entity";
-import { ContestOptions } from "@/contest/contest-options.interface";
 import { ContestPermissionType, ContestService, ContestUserRole } from "@/contest/contest.service";
 
 import { SubmissionProgress, SubmissionProgressType } from "./submission-progress.interface";
@@ -173,6 +173,7 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
   /**
    * @return Whether the user has permission to view the submission.
    * @return The submission's progress visibilities for this user (used for contests).
+   * @return Whether the user has permission to view the submission content (code).
    */
   async getSubmissionVisibilityOfUser(
     user: UserEntity,
@@ -180,16 +181,18 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
     problem?: ProblemEntity,
     hasManageProblemPrivilege?: boolean,
     contest?: ContestEntity
-  ): Promise<[hasViewPermission: boolean, progressVisibilities: SubmissionProgressVisibilities]> {
+  ): Promise<
+    [hasViewPermission: boolean, progressVisibilities: SubmissionProgressVisibilities, canViewContent: boolean]
+  > {
     if (!submission.contestId) {
-      if (user.id === submission.submitterId) return [true, null];
-      if (submission.isPublic) return [true, null];
-      if (!user) return [false, null];
+      if (user.id === submission.submitterId) return [true, null, true];
+      if (submission.isPublic) return [true, null, true];
+      if (!user) return [false, null, false];
     } else {
       contest ??= await this.contestService.findContestById(submission.contestId);
       const role = await this.contestService.getUserRoleInContest(user, contest);
 
-      if (role === ContestUserRole.Inspector || role === ContestUserRole.Admin) return [true, null];
+      if (role === ContestUserRole.Inspector || role === ContestUserRole.Admin) return [true, null, true];
 
       const ended = await this.contestService.isEndedFor(contest, user);
 
@@ -198,17 +201,22 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
         // The user is a participant
         const contestOptions = await this.contestService.getContestOptions(contest.id);
 
-        if (
-          // Seeing self' submissions
-          submission.submitterId === user?.id ||
-          // Seeing others' submissions
-          (contestOptions.allowSeeingOthersSubmissionDetail && submission.isPublic)
-        ) {
-          return [true, contestOptions];
+        if (submission.submitterId === user?.id) return [true, contestOptions, true];
+
+        if (contestOptions.allowSeeingOthersSubmissions && submission.isPublic) {
+          return [
+            true,
+            pick(contestOptions, [
+              "submissionMetaVisibility",
+              "submissionTestcaseResultVisibility",
+              "submissionTestcaseDetailVisibility"
+            ]),
+            contestOptions.allowSeeingOthersSubmissionDetail
+          ];
         }
       } else {
         // The contest is ended
-        if (submission.isPublic || submission.submitterId === user?.id) return [true, null];
+        if (submission.isPublic || submission.submitterId === user?.id) return [true, null, true];
       }
     }
 
@@ -220,7 +228,9 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
         hasManageProblemPrivilege
       )
     )
-      return [true, null];
+      return [true, null, true];
+
+    return [false, null, false];
   }
 
   async userHasPermission(

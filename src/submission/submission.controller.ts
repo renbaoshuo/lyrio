@@ -352,7 +352,7 @@ export class SubmissionController {
       this.userPrivilegeService.userHasPrivilege(currentUser, UserPrivilegeType.ManageProblem)
     ]);
 
-    const [hasViewPermission, progressVisibilities] = await this.submissionService.getSubmissionVisibilityOfUser(
+    const [hasViewPermission, progressVisibilities, canViewContent] = await this.submissionService.getSubmissionVisibilityOfUser(
       currentUser,
       submission
     );
@@ -381,7 +381,7 @@ export class SubmissionController {
         problem: await this.problemService.getProblemMeta(problem, request.locale),
         submitter: await this.userService.getUserMeta(submitter, currentUser)
       },
-      content: submissionDetail.content,
+      content: canViewContent ? submissionDetail.content : null,
       progress: progress || submissionDetail.result,
       progressSubscriptionKey: !pending
         ? null
@@ -414,7 +414,12 @@ export class SubmissionController {
         error: DownloadSubmissionFileResponseError.NO_SUCH_SUBMISSION
       };
 
-    if (!(await this.submissionService.getSubmissionVisibilityOfUser(currentUser, submission))[0])
+    const [hasViewPermission, , canViewContent] = await this.submissionService.getSubmissionVisibilityOfUser(
+      currentUser,
+      submission
+    );
+
+    if (!hasViewPermission || !canViewContent)
       return {
         error: DownloadSubmissionFileResponseError.PERMISSION_DENIED
       };
