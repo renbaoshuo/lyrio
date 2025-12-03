@@ -1,6 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
 
-import { ProblemMetaDto, ProblemTitleDto } from "@/problem/dto";
+import { ProblemMetaDto } from "@/problem/dto";
 
 import { UserMetaDto } from "@/user/dto";
 

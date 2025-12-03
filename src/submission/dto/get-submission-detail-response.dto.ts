@@ -1,8 +1,8 @@
 import { ApiProperty } from "@nestjs/swagger";
 
-import { ContestMetaDto } from "@/contest/dto";
-
 import { SubmissionMetaDto } from "./submission-meta.dto";
+
+import { ContestMetaDto } from "@/contest/dto";
 
 import { SubmissionContent } from "../submission-content.interface";
 import { SubmissionProgress } from "../submission-progress.interface";

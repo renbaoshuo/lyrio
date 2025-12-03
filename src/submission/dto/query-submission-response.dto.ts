@@ -1,7 +1,8 @@
-import { ContestMetaDto } from "@/contest/dto";
 import { ApiProperty } from "@nestjs/swagger";
 
 import { SubmissionMetaDto } from "./submission-meta.dto";
+
+import { ContestMetaDto } from "@/contest/dto";
 
 export enum QuerySubmissionResponseError {
   NO_SUCH_CONTEST = "NO_SUCH_CONTEST",
