@@ -43,8 +43,7 @@ import {
   ProblemLocalizedContentDto,
   ProblemFileDto,
   ProblemMetaDto,
-  LocalizedProblemTagDto,
-  ProblemTitleDto
+  LocalizedProblemTagDto
 } from "./dto";
 
 export enum ProblemPermissionType {

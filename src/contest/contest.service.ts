@@ -801,6 +801,19 @@ export class ContestService {
     });
   }
 
+  async findRunningContestByProblemAndUser(problemId: number, userId: number): Promise<ContestEntity> {
+    const now = new Date();
+    return await this.contestRepository
+      .createQueryBuilder("contest")
+      .innerJoin("contest_problem", "cp", "cp.contestId = contest.id")
+      .innerJoin("contest_participant", "cpart", "cpart.contestId = contest.id")
+      .where("cp.problemId = :problemId", { problemId })
+      .andWhere("cpart.userId = :userId", { userId })
+      .andWhere("contest.startTime <= :now", { now })
+      .andWhere("contest.endTime >= :now", { now })
+      .getOne();
+  }
+
   async getContestOptions(contestOrId: ContestEntity | number): Promise<ContestOptions> {
     return (await this.getContestMeta(typeof contestOrId === "number" ? contestOrId : contestOrId.id)).contestOptions;
   }

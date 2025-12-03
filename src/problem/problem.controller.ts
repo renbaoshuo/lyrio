@@ -300,7 +300,7 @@ export class ProblemController {
     @CurrentUser() currentUser: UserEntity,
     @Body() request: GetProblemRequestDto
   ): Promise<GetProblemResponseDto> {
-    const contest = await this.contestService.findContestById(request.contestId);
+    let contest = await this.contestService.findContestById(request.contestId);
     if (request.contestId && !contest)
       return {
         error: GetProblemResponseError.NO_SUCH_CONTEST
@@ -318,6 +318,12 @@ export class ProblemController {
       return {
         error: GetProblemResponseError.NO_SUCH_PROBLEM
       };
+
+    // If the user is participating in a running contest that contains this problem,
+    // we should enforce contest restrictions even if the user is accessing the problem directly.
+    if (!contest && currentUser) {
+      contest = await this.contestService.findRunningContestByProblemAndUser(problem.id, currentUser.id);
+    }
 
     const userRoleInContest = contest && (await this.contestService.getUserRoleInContest(currentUser, contest));
 
