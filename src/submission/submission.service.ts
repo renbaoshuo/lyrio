@@ -340,6 +340,8 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
     if (managerProblemOrContest) return [SubmissionPermissionType.Cancel, SubmissionPermissionType.Rejudge];
 
     if (submission.submitterId === user.id) return [SubmissionPermissionType.Cancel];
+
+    return [];
   }
 
   async getSubmissionsOfContest(contestId: number, problemId?: number): Promise<SubmissionEntity[]> {
