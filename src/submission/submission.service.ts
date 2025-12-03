@@ -376,7 +376,7 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
       if (contestId === false) queryBuilder.andWhere("contestId IS NULL");
       else
         queryBuilder.andWhere("contestId = :contestId", {
-          contestId: contestId
+          contestId
         });
     }
 
@@ -561,7 +561,10 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
     };
 
     if (progressVisibility === SubmissionProgressVisibility.Hidden) {
-      result.score = result.status = result.timeUsed = result.memoryUsed = null;
+      result.score = null;
+      result.status = null;
+      result.timeUsed = null;
+      result.memoryUsed = null;
     } else if (progressVisibility === SubmissionProgressVisibility.PretestsOnly) {
       result.score = submission.pretestsScore;
       result.status = submission.pretestsStatus;
