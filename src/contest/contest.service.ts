@@ -1,7 +1,7 @@
 import { forwardRef, Inject, Injectable } from "@nestjs/common";
-import { InjectConnection, InjectRepository } from "@nestjs/typeorm";
+import { InjectDataSource, InjectRepository } from "@nestjs/typeorm";
 
-import { Connection, MoreThan, Not, Repository } from "typeorm";
+import { DataSource, MoreThan, Not, Repository } from "typeorm";
 import moment from "moment";
 
 import { AuditLogObjectType, AuditService } from "@/audit/audit.service";
@@ -104,8 +104,8 @@ export class ContestService {
   private readonly contestIssuePushService: PushService<ContestIssuePushSubscription, Record<number, ContestIssueDto>>;
 
   constructor(
-    @InjectConnection()
-    private readonly connection: Connection,
+    @InjectDataSource()
+    private readonly connection: DataSource,
     @InjectRepository(ContestEntity)
     private readonly contestRepository: Repository<ContestEntity>,
     @InjectRepository(ContestConfigEntity)
