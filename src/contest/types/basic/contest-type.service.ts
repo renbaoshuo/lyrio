@@ -5,8 +5,9 @@ import moment from "moment";
 import { ParticipantDetail } from "@/contest/contest-participant.entity";
 import { ContestTypeServiceInterface } from "@/contest/contest-type-service.interface";
 import { restrictProperties } from "@/common/restrict-properties";
-import { SubmissionBasicMetaDto } from "@/submission/dto";
 import { SubmissionStatus } from "@/submission/submission-status.enum";
+
+import { SubmissionBasicMetaDto } from "@/submission/dto";
 
 interface ContestTypeOptionsBasic {
   problemConfig: Record<
@@ -29,9 +30,8 @@ type ParticipantDetailInfoBasic = Record<
 
 @Injectable()
 export class ContestTypeBasicService
-  implements ContestTypeServiceInterface<ContestTypeOptionsBasic, ParticipantDetailInfoBasic> {
-  constructor() {}
-
+  implements ContestTypeServiceInterface<ContestTypeOptionsBasic, ParticipantDetailInfoBasic>
+{
   validateConfig(contestTypeOptions: ContestTypeOptionsBasic, problemIds: number[]): boolean {
     if (
       typeof contestTypeOptions.useBestSubmission !== "boolean" ||
@@ -64,7 +64,10 @@ export class ContestTypeBasicService
     detail: ParticipantDetail<ParticipantDetailInfoBasic>,
     contestTypeOptions: ContestTypeOptionsBasic
   ): Promise<void> {
-    const { fullScore, fullScoreCodeforcesDecreasing } = contestTypeOptions.problemConfig[problemId] || { fullScore: 100, fullScoreCodeforcesDecreasing: false };
+    const { fullScore, fullScoreCodeforcesDecreasing } = contestTypeOptions.problemConfig[problemId] || {
+      fullScore: 100,
+      fullScoreCodeforcesDecreasing: false
+    };
 
     detail.info ??= {};
     detail.info[problemId] ??= {

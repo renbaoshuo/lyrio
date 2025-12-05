@@ -2,9 +2,10 @@ import { ApiProperty } from "@nestjs/swagger";
 
 import { Locale } from "@/common/locale.type";
 
-import { ContestPublicness, ContestType } from "../contest.entity";
 import { ContestOptionsDto } from "./contest-options.dto";
 import { ContestProblemDto } from "./contest-information.dto";
+
+import { ContestPublicness, ContestType } from "../contest.entity";
 
 export class ContestMetaDto {
   @ApiProperty()

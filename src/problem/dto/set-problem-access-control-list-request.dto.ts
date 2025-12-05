@@ -2,9 +2,9 @@ import { ApiProperty } from "@nestjs/swagger";
 
 import { IsInt, IsObject } from "class-validator";
 
-import { ProblemPermissionLevel } from "../problem.service";
-
 import { AccessControlList } from "@/permission/permission.service";
+
+import { ProblemPermissionLevel } from "../problem.service";
 
 export class SetProblemAccessControlListRequestDto {
   @ApiProperty()

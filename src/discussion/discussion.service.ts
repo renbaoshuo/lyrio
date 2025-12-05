@@ -1,9 +1,8 @@
-import { Injectable, Inject, forwardRef } from "@nestjs/common";
-import { InjectRepository, InjectConnection } from "@nestjs/typeorm";
+import { Injectable } from "@nestjs/common";
+import { InjectRepository, InjectDataSource } from "@nestjs/typeorm";
 
-import { Repository, Connection, EntityManager, Brackets } from "typeorm";
+import { Repository, DataSource, EntityManager, Brackets } from "typeorm";
 
-import { UserService } from "@/user/user.service";
 import { UserEntity } from "@/user/user.entity";
 import { AuditLogObjectType, AuditService } from "@/audit/audit.service";
 import { ConfigService } from "@/config/config.service";
@@ -56,8 +55,8 @@ type GetReactionsResult = [reactionsCount: Record<string, number>, currentUserRe
 @Injectable()
 export class DiscussionService {
   constructor(
-    @InjectConnection()
-    private readonly connection: Connection,
+    @InjectDataSource()
+    private readonly connection: DataSource,
     @InjectRepository(DiscussionEntity)
     private readonly discussionRepository: Repository<DiscussionEntity>,
     @InjectRepository(DiscussionContentEntity)
@@ -88,19 +87,19 @@ export class DiscussionService {
   }
 
   async discussionExists(id: number): Promise<boolean> {
-    return (await this.discussionRepository.count({ id })) !== 0;
+    return (await this.discussionRepository.countBy({ id })) !== 0;
   }
 
   async discussionReplyExists(id: number): Promise<boolean> {
-    return (await this.discussionReplyRepository.count({ id })) !== 0;
+    return (await this.discussionReplyRepository.countBy({ id })) !== 0;
   }
 
   async findDiscussionById(id: number): Promise<DiscussionEntity> {
-    return id && await this.discussionRepository.findOne(id);
+    return await this.discussionRepository.findOneBy({ id });
   }
 
   async findDiscussionReplyById(id: number): Promise<DiscussionReplyEntity> {
-    return id && await this.discussionReplyRepository.findOne(id);
+    return await this.discussionReplyRepository.findOneBy({ id });
   }
 
   async findDiscussionsByExistingIds(discussionIds: number[]): Promise<DiscussionEntity[]> {
@@ -207,11 +206,12 @@ export class DiscussionService {
     if (hasPrivilege ?? (await this.userPrivilegeService.userHasPrivilege(user, UserPrivilegeType.ManageDiscussion)))
       return Object.values(DiscussionPermissionType);
 
-    const permissionLevel = await this.permissionService.getUserOrItsGroupsMaxPermissionLevel<DiscussionPermissionLevel>(
-      user,
-      discussion.id,
-      PermissionObjectType.Discussion
-    );
+    const permissionLevel =
+      await this.permissionService.getUserOrItsGroupsMaxPermissionLevel<DiscussionPermissionLevel>(
+        user,
+        discussion.id,
+        PermissionObjectType.Discussion
+      );
     const result: DiscussionPermissionType[] = [];
     if (discussion.isPublic || permissionLevel >= DiscussionPermissionLevel.Read || discussion.publisherId === user.id)
       result.push(DiscussionPermissionType.View);
@@ -296,7 +296,7 @@ export class DiscussionService {
       discussion.editTime = new Date();
       await transactionalEntityManager.save(discussion);
 
-      const discussionContent = await transactionalEntityManager.findOne(DiscussionContentEntity, {
+      const discussionContent = await transactionalEntityManager.findOneBy(DiscussionContentEntity, {
         discussionId: discussion.id
       });
       discussionContent.content = newContent;
@@ -307,7 +307,7 @@ export class DiscussionService {
   }
 
   async getDiscussionContent(discussion: DiscussionEntity): Promise<string> {
-    const discussionContent = await this.discussionContentRepository.findOne({ discussionId: discussion.id });
+    const discussionContent = await this.discussionContentRepository.findOneBy({ discussionId: discussion.id });
     return discussionContent.content;
   }
 
@@ -502,7 +502,7 @@ export class DiscussionService {
       .set({
         sortTime: new Date(
           Math.max(
-            +queryResultMaxReplyTime?.maxReplyTime || 0,
+            +(queryResultMaxReplyTime?.maxReplyTime || 0),
             +(editTime || queryResultPublishOrEditTime.publishOrEditTime)
           )
         )
@@ -674,6 +674,6 @@ export class DiscussionService {
   }
 
   async getDiscussionCountOfProblem(problem: ProblemEntity): Promise<number> {
-    return await this.discussionRepository.count({ problemId: problem.id });
+    return await this.discussionRepository.countBy({ problemId: problem.id });
   }
 }

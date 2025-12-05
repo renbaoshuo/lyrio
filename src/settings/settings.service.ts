@@ -16,11 +16,11 @@ export class SettingsService {
   ) {}
 
   async get<T>(Class: ClassConstructor<T>): Promise<T> {
-    const item = await this.settingsRepository.findOne({
+    const item = await this.settingsRepository.findOneBy({
       key: getSettingsKey(Class)
     });
 
-    const result = item ? item.value : ((Class as unknown) as { defaultValue: T }).defaultValue;
+    const result = item ? item.value : (Class as unknown as { defaultValue: T }).defaultValue;
 
     return plainToClass(Class, result);
   }

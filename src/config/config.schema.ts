@@ -38,6 +38,19 @@ class ServerConfig {
   readonly clusters: number;
 }
 
+class MetricsConfig {
+  @IsIP()
+  readonly hostname: string;
+
+  @IsPortNumber()
+  readonly basePort: number;
+
+  @IsArray()
+  @IsIP(undefined, { each: true })
+  @IsOptional()
+  readonly allowedIps?: string[];
+}
+
 class ServicesConfigDatabase {
   @IsIn(["mysql", "mariadb"])
   readonly type: "mysql" | "mariadb";
@@ -58,17 +71,34 @@ class ServicesConfigDatabase {
   readonly database: string;
 }
 
-class ServicesConfigMinio {
+class ServicesConfigMinioConnectionInfo {
   @IsUrl({ require_tld: false })
   readonly endpoint: string;
 
   @IsUrl({ require_tld: false })
   @IsOptional()
-  readonly endpointForUser: string;
+  readonly urlEndpoint: string;
+}
 
-  @IsUrl({ require_tld: false })
+class ServicesConfigMinio {
+  @ValidateNested()
+  @Type(() => ServicesConfigMinioConnectionInfo)
+  readonly default: ServicesConfigMinioConnectionInfo;
+
+  @ValidateNested()
+  @Type(() => ServicesConfigMinioConnectionInfo)
   @IsOptional()
-  readonly endpointForJudge: string;
+  readonly forUserUpload: ServicesConfigMinioConnectionInfo;
+
+  @ValidateNested()
+  @Type(() => ServicesConfigMinioConnectionInfo)
+  @IsOptional()
+  readonly forUserDownload: ServicesConfigMinioConnectionInfo;
+
+  @ValidateNested()
+  @Type(() => ServicesConfigMinioConnectionInfo)
+  @IsOptional()
+  readonly forJudge: ServicesConfigMinioConnectionInfo;
 
   @IsString()
   readonly accessKey: string;
@@ -311,6 +341,11 @@ class PreferenceConfigMisc {
   @ApiProperty()
   readonly googleAnalyticsId: string;
 
+  @IsUrl()
+  @IsOptional()
+  @ApiProperty()
+  readonly plausibleApiEndpoint: string;
+
   @IsString()
   @ApiProperty()
   readonly gravatarCdn: string;
@@ -537,6 +572,11 @@ export class AppConfig {
   @ValidateNested()
   @Type(() => ServerConfig)
   readonly server: ServerConfig;
+
+  @ValidateNested()
+  @Type(() => MetricsConfig)
+  @IsOptional()
+  readonly metrics?: MetricsConfig;
 
   @ValidateNested()
   @Type(() => ServicesConfig)

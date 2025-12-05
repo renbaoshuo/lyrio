@@ -1,7 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
 
-import { Locale } from "@/common/locale.type";
-
 import { LocalizedProblemTagDto } from "./localized-problem-tag.dto";
 
 import { ProblemMetaDto } from "./problem-meta.dto";

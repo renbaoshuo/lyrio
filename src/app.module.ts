@@ -5,6 +5,7 @@ import { AppService } from "./app.service";
 import { ErrorFilter } from "./error.filter";
 import { RecaptchaFilter } from "./recaptcha.filter";
 import { AuthMiddleware } from "./auth/auth.middleware";
+import { MetricsMiddleware } from "./metrics/metrics.middleware";
 
 import { SharedModule } from "./shared.module";
 import { RedisModule } from "./redis/redis.module";
@@ -25,6 +26,7 @@ import { MigrationModule } from "./migration/migration.module";
 import { EventReportModule } from "./event-report/event-report.module";
 import { HomepageModule } from "./homepage/homepage.module";
 import { ContestModule } from "./contest/contest.module";
+import { MetricsModule } from "./metrics/metrics.module";
 
 @Module({
   imports: [
@@ -46,7 +48,8 @@ import { ContestModule } from "./contest/contest.module";
     forwardRef(() => EventReportModule),
     forwardRef(() => HomepageModule),
     forwardRef(() => ContestModule),
-    forwardRef(() => MigrationModule)
+    forwardRef(() => MigrationModule),
+    forwardRef(() => MetricsModule)
   ],
   controllers: [AppController],
   providers: [AppService, ErrorFilter, RecaptchaFilter]
@@ -54,6 +57,10 @@ import { ContestModule } from "./contest/contest.module";
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(AuthMiddleware).forRoutes({
+      path: "*",
+      method: RequestMethod.ALL
+    });
+    consumer.apply(MetricsMiddleware).forRoutes({
       path: "*",
       method: RequestMethod.ALL
     });

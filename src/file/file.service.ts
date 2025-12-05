@@ -2,11 +2,11 @@ import { URL } from "url";
 import { Readable } from "stream";
 
 import { Injectable, OnModuleInit } from "@nestjs/common";
-import { InjectRepository, InjectConnection } from "@nestjs/typeorm";
+import { InjectRepository } from "@nestjs/typeorm";
 
-import { Repository, Connection, EntityManager, In } from "typeorm";
+import { Repository, EntityManager, In } from "typeorm";
 import { v4 as UUID } from "uuid";
-import { Client as MinioClient } from "minio";
+import { Client as MinioClient, ClientOptions } from "minio";
 
 import { logger } from "@/logger";
 import { ConfigService } from "@/config/config.service";
@@ -61,13 +61,13 @@ function parseMainEndpointUrl(endpoint: string): MinioEndpointConfig {
   return result as MinioEndpointConfig;
 }
 
-function parseAlternativeEndpointUrl(endpoint: string): (originalUrl: string) => string {
+function parseSignEndpointUrl(endpoint: string): (originalUrl: string) => string {
   if (!endpoint) return originalUrl => originalUrl;
 
   const url = new URL(endpoint);
   if (url.hash || url.search)
-    throw new Error("Search parameters and hash are not supported for alternative MinIO endpoint URL.");
-  if (!url.pathname.endsWith("/")) throw new Error("Alternative MinIO endpoint URL's pathname must ends with '/'.");
+    throw new Error("Search parameters and hash are not supported for MinIO sign endpoint URL.");
+  if (!url.pathname.endsWith("/")) throw new Error("MinIO sign endpoint URL's pathname must ends with '/'.");
 
   return originalUrl => {
     const parsedOriginUrl = new URL(originalUrl);
@@ -75,9 +75,10 @@ function parseAlternativeEndpointUrl(endpoint: string): (originalUrl: string) =>
   };
 }
 
-export enum AlternativeUrlFor {
-  User,
-  Judge
+export enum MinioSignFor {
+  UserUpload = "UserUpload",
+  UserDownload = "UserDownload",
+  Judge = "Judge"
 }
 
 @Injectable()
@@ -86,26 +87,53 @@ export class FileService implements OnModuleInit {
 
   private readonly bucket: string;
 
-  private readonly replaceWithAlternativeUrlFor: Record<AlternativeUrlFor, (originalUrl: string) => string>;
+  private readonly minioSigner: Record<
+    MinioSignFor,
+    {
+      client: MinioClient;
+      replaceUrl: (originalUrl: string) => string;
+    }
+  >;
 
   constructor(
-    @InjectConnection()
-    private readonly connection: Connection,
     @InjectRepository(FileEntity)
     private readonly fileRepository: Repository<FileEntity>,
     private readonly configService: ConfigService
   ) {
     const config = this.configService.config.services.minio;
+    const commonOptions: Pick<ClientOptions, "accessKey" | "secretKey" | "region"> = {
+      accessKey: config.accessKey,
+      secretKey: config.secretKey,
+      region: "us-east-1"
+    };
 
     this.minioClient = new MinioClient({
-      ...parseMainEndpointUrl(config.endpoint),
-      accessKey: config.accessKey,
-      secretKey: config.secretKey
+      ...parseMainEndpointUrl(config.default.endpoint),
+      ...commonOptions
     });
     this.bucket = config.bucket;
-    this.replaceWithAlternativeUrlFor = {
-      [AlternativeUrlFor.User]: parseAlternativeEndpointUrl(config.endpointForUser),
-      [AlternativeUrlFor.Judge]: parseAlternativeEndpointUrl(config.endpointForJudge)
+    this.minioSigner = {
+      [MinioSignFor.UserUpload]: {
+        client: new MinioClient({
+          ...parseMainEndpointUrl(config?.forUserUpload?.endpoint || config.default.endpoint),
+          ...commonOptions
+        }),
+        replaceUrl: parseSignEndpointUrl(config?.forUserUpload?.urlEndpoint || config.default.urlEndpoint)
+      },
+      [MinioSignFor.UserDownload]: {
+        client: new MinioClient({
+          ...parseMainEndpointUrl(config?.forUserDownload?.endpoint || config.default.endpoint),
+          ...commonOptions
+        }),
+        replaceUrl: parseSignEndpointUrl(config?.forUserDownload?.urlEndpoint || config.default.urlEndpoint)
+      },
+      [MinioSignFor.Judge]: {
+        client: new MinioClient({
+          ...parseMainEndpointUrl(config?.forJudge?.endpoint || config.default.endpoint),
+          ...commonOptions
+        }),
+        replaceUrl: parseSignEndpointUrl(config?.forJudge?.urlEndpoint || config.default.urlEndpoint)
+      }
     };
   }
 
@@ -185,7 +213,7 @@ export class FileService implements OnModuleInit {
     if (uploadInfo.uuid) {
       // The client says the file is uploaded
 
-      if ((await transactionalEntityManager.count(FileEntity, { uuid: uploadInfo.uuid })) !== 0)
+      if ((await transactionalEntityManager.countBy(FileEntity, { uuid: uploadInfo.uuid })) !== 0)
         return "FILE_UUID_EXISTS";
 
       // Check file existance
@@ -218,20 +246,21 @@ export class FileService implements OnModuleInit {
    * Sign a upload request for given size. The alternative MinIO endpoint for user will be used in the POST URL.
    */
   private async signUploadRequest(minSize?: number, maxSize?: number): Promise<SignedFileUploadRequestDto> {
+    const signer = this.minioSigner[MinioSignFor.UserUpload];
     const uuid = UUID();
-    const policy = this.minioClient.newPostPolicy();
+    const policy = signer.client.newPostPolicy();
     policy.setBucket(this.bucket);
     policy.setKey(uuid);
     policy.setExpires(new Date(Date.now() + FILE_UPLOAD_EXPIRE_TIME * 1000));
     if (minSize != null || maxSize != null) {
       policy.setContentLengthRange(minSize || 0, maxSize || 0);
     }
-    const policyResult = await this.minioClient.presignedPostPolicy(policy);
+    const policyResult = await signer.client.presignedPostPolicy(policy);
 
     return {
       uuid,
       method: "POST",
-      url: this.replaceWithAlternativeUrlFor[AlternativeUrlFor.User](policyResult.postURL),
+      url: signer.replaceUrl(policyResult.postURL),
       extraFormData: policyResult.formData,
       fileFieldName: "file"
     };
@@ -273,7 +302,7 @@ export class FileService implements OnModuleInit {
   async getFileSizes(uuids: string[], transcationalEntityManager: EntityManager): Promise<number[]> {
     if (uuids.length === 0) return [];
     const uniqueUuids = Array.from(new Set(uuids));
-    const files = await transcationalEntityManager.find(FileEntity, {
+    const files = await transcationalEntityManager.findBy(FileEntity, {
       uuid: In(uniqueUuids)
     });
     const map = Object.fromEntries(files.map(file => [file.uuid, file]));
@@ -284,14 +313,15 @@ export class FileService implements OnModuleInit {
     uuid,
     downloadFilename,
     noExpire,
-    useAlternativeEndpointFor
+    signFor
   }: {
     uuid: string;
     downloadFilename?: string;
     noExpire?: boolean;
-    useAlternativeEndpointFor?: AlternativeUrlFor;
+    signFor?: MinioSignFor;
   }): Promise<string> {
-    const url = await this.minioClient.presignedGetObject(
+    const client = signFor ? this.minioSigner[signFor].client : this.minioClient;
+    const url = await client.presignedGetObject(
       this.bucket,
       uuid,
       // The maximum expire time is 7 days
@@ -303,14 +333,13 @@ export class FileService implements OnModuleInit {
           }
     );
 
-    if (useAlternativeEndpointFor != null) return this.replaceWithAlternativeUrlFor[useAlternativeEndpointFor](url);
+    if (signFor) return this.minioSigner[signFor].replaceUrl(url);
     else return url;
   }
 
   async runMaintainceTasks(): Promise<void> {
     // Delete unused files
-    // TODO: Use listObjectsV2 instead, which returns at most 1000 objects in a time
-    const stream = this.minioClient.listObjects(this.bucket);
+    const stream = this.minioClient.listObjectsV2(this.bucket);
     const deleteList: string[] = [];
     await new Promise((resolve, reject) => {
       const promises: Promise<void>[] = [];
@@ -318,7 +347,7 @@ export class FileService implements OnModuleInit {
         promises.push(
           (async () => {
             const uuid = object.name;
-            if (!(await this.fileRepository.count({ uuid }))) {
+            if (!(await this.fileRepository.countBy({ uuid }))) {
               deleteList.push(uuid);
             }
           })()

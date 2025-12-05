@@ -1,7 +1,6 @@
-import type { SubmissionBasicMetaDto } from "@/submission/dto";
-
 import { ParticipantDetail } from "./contest-participant.entity";
-import { ContestEntity } from "./contest.entity";
+
+import type { SubmissionBasicMetaDto } from "@/submission/dto";
 
 export interface ContestTypeServiceInterface<ContestTypeOptions, ParticipantDetailInfo> {
   /**

@@ -1,7 +1,7 @@
 import { Injectable, Inject, forwardRef } from "@nestjs/common";
-import { InjectRepository, InjectConnection } from "@nestjs/typeorm";
+import { InjectRepository, InjectDataSource } from "@nestjs/typeorm";
 
-import { Repository, Connection, QueryBuilder, LessThan } from "typeorm";
+import { Repository, DataSource, QueryBuilder, LessThan } from "typeorm";
 import { ValidationError } from "class-validator";
 import { v4 as uuid } from "uuid";
 import moment from "moment-timezone";
@@ -27,12 +27,13 @@ import { LockService } from "@/redis/lock.service";
 import { JudgeGateway } from "@/judge/judge.gateway";
 import { ProblemTypeFactoryService } from "@/problem-type/problem-type-factory.service";
 import { AuditLogObjectType, AuditService } from "@/audit/audit.service";
-import { AlternativeUrlFor, FileService } from "@/file/file.service";
+import { MinioSignFor, FileService } from "@/file/file.service";
 import { ConfigService } from "@/config/config.service";
 import { FileEntity } from "@/file/file.entity";
 import { UserPrivilegeService, UserPrivilegeType } from "@/user/user-privilege.service";
 import { ContestEntity } from "@/contest/contest.entity";
 import { ContestPermissionType, ContestService, ContestUserRole } from "@/contest/contest.service";
+import { MetricsService } from "@/metrics/metrics.service";
 
 import { SubmissionProgress, SubmissionProgressType } from "./submission-progress.interface";
 import { SubmissionContent } from "./submission-content.interface";
@@ -119,8 +120,8 @@ function makeSubmissionPriority(
 @Injectable()
 export class SubmissionService implements JudgeTaskService<SubmissionProgress, SubmissionTaskExtraInfo> {
   constructor(
-    @InjectConnection()
-    private connection: Connection,
+    @InjectDataSource()
+    private connection: DataSource,
     @InjectRepository(SubmissionEntity)
     private readonly submissionRepository: Repository<SubmissionEntity>,
     @InjectRepository(SubmissionDetailEntity)
@@ -139,6 +140,7 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
     private readonly configService: ConfigService,
     @Inject(forwardRef(() => UserPrivilegeService))
     private readonly userPrivilegeService: UserPrivilegeService,
+    private readonly metricsService: MetricsService,
     @Inject(forwardRef(() => ContestService))
     private readonly contestService: ContestService
   ) {
@@ -150,14 +152,19 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
     });
   }
 
+  private readonly metricSubmissionJudgeTime = this.metricsService.histogram(
+    "syzoj_ng_submission_judge_time_seconds",
+    this.metricsService.histogram.BUCKETS_TIME_10M_30
+  );
+
   async findSubmissionById(submissionId: number): Promise<SubmissionEntity> {
-    return await this.submissionRepository.findOne({
+    return await this.submissionRepository.findOneBy({
       id: submissionId
     });
   }
 
   async findSubmissionByTaskId(taskId: string): Promise<SubmissionEntity> {
-    return await this.submissionRepository.findOne({
+    return await this.submissionRepository.findOneBy({
       taskId
     });
   }
@@ -345,7 +352,7 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
   }
 
   async getSubmissionsOfContest(contestId: number, problemId?: number): Promise<SubmissionEntity[]> {
-    return await this.submissionRepository.find(
+    return await this.submissionRepository.findBy(
       problemId
         ? {
             contestId,
@@ -439,8 +446,13 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
     const largestId = result[0].id;
     const smallestId = result[result.length - 1].id;
     const [hasSmallerId, hasLargerId] = await Promise.all([
-      queryBuilderWithoutPagination.clone().andWhere("id < :smallestId", { smallestId }).take(1).getCount(),
-      queryBuilderWithoutPagination.clone().andWhere("id > :largestId", { largestId }).take(1).getCount()
+      queryBuilderWithoutPagination
+        .clone()
+        .select("1")
+        .andWhere("id < :smallestId", { smallestId })
+        .take(1)
+        .getRawOne(),
+      queryBuilderWithoutPagination.clone().select("1").andWhere("id > :largestId", { largestId }).take(1).getRawOne()
     ]);
 
     return {
@@ -472,8 +484,6 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
     ]
   > {
     const problemTypeService = this.problemTypeFactoryService.type(problem.type);
-
-    await new Promise(r => setTimeout(r, 10000));
 
     const validationError = await problemTypeService.validateSubmissionContent(content);
     if (validationError && validationError.length > 0) return [validationError, null, null];
@@ -587,7 +597,7 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
   }
 
   async getSubmissionDetail(submission: SubmissionEntity): Promise<SubmissionDetailEntity> {
-    return await this.submissionDetailRepository.findOne({
+    return await this.submissionDetailRepository.findOneBy({
       submissionId: submission.id
     });
   }
@@ -760,7 +770,7 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
       // eslint-disable-next-line @typescript-eslint/no-shadow
       const [userPendingCount, userOccupiedTimeRecently, avgAndStdEveryUsersOccupiedTimeRecently] = await Promise.all([
         // userPendingCount
-        this.submissionRepository.count({
+        this.submissionRepository.countBy({
           status: SubmissionStatus.Pending,
           submitterId: submission.submitterId
         }),
@@ -861,6 +871,10 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
     await this.submissionRepository.save(submission);
   }
 
+  async setSubmissionsPublic(problemId: number, isPublic: boolean): Promise<void> {
+    await this.submissionRepository.update({ problemId }, { isPublic });
+  }
+
   async deleteSubmission(submission: SubmissionEntity): Promise<void> {
     // This function updates related info, lock the problem for Read first, then lock the submission
     let deleteFileActually: () => void = null;
@@ -958,6 +972,8 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
       submission.timeUsed = progress.timeUsed;
       submission.memoryUsed = progress.memoryUsed;
 
+      this.metricSubmissionJudgeTime.observe(submission.totalOccupiedTime);
+
       await this.connection.transaction(async transactionalEntityManager => {
         await transactionalEntityManager.save(submission);
         await transactionalEntityManager.save(submissionDetail);
@@ -1047,7 +1063,7 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
                       uuid: submissionDetail.fileUuid,
                       downloadFilename: null,
                       noExpire: true,
-                      useAlternativeEndpointFor: AlternativeUrlFor.Judge
+                      signFor: MinioSignFor.Judge
                     })
                   : null
               }
@@ -1087,7 +1103,7 @@ export class SubmissionService implements JudgeTaskService<SubmissionProgress, S
   }
 
   async getUserProblemAcceptedSubmissionCount(userId: number, problemId: number): Promise<number> {
-    return await this.submissionRepository.count({
+    return await this.submissionRepository.countBy({
       submitterId: userId,
       problemId,
       status: SubmissionStatus.Accepted

@@ -1,9 +1,9 @@
 import { ApiProperty } from "@nestjs/swagger";
 
+import { ContestMetaDto } from "./contest-meta.dto";
+
 import { UserMetaDto } from "@/user/dto";
 import { ProblemMetaDto } from "@/problem/dto";
-
-import { ContestMetaDto } from "./contest-meta.dto";
 
 export enum QueryRanklistResponseError {
   NO_SUCH_CONTEST = "NO_SUCH_CONTEST",

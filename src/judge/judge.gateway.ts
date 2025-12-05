@@ -12,9 +12,10 @@ import {
 import { Server, Socket } from "socket.io"; // eslint-disable-line import/no-extraneous-dependencies
 import SocketIOParser from "socket.io-msgpack-parser";
 import { Redis } from "ioredis";
+import proxyAddr from "proxy-addr";
 
 import { logger } from "@/logger";
-import { AlternativeUrlFor, FileService } from "@/file/file.service";
+import { MinioSignFor, FileService } from "@/file/file.service";
 import { SubmissionProgress } from "@/submission/submission-progress.interface";
 import { ConfigService } from "@/config/config.service";
 import { EventReportService, EventReportType } from "@/event-report/event-report.service";
@@ -44,7 +45,13 @@ const REDIS_LOCK_JUDGE_CLIENT_CONNECT_DISCONNECT = "judge-client-connect-disconn
 
 const REDIS_CHANNEL_CANCEL_TASK = "cancel-task";
 
-@WebSocketGateway({ namespace: "judge", path: "/api/socket", transports: ["websocket"], parser: SocketIOParser })
+@WebSocketGateway({
+  maxHttpBufferSize: 1e9,
+  namespace: "judge",
+  path: "/api/socket",
+  transports: ["websocket"],
+  parser: SocketIOParser
+})
 export class JudgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   private server: Server;
@@ -102,7 +109,7 @@ export class JudgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   async handleConnection(client: Socket): Promise<void> {
-    const key = client.handshake.query.key.split(" ").pop();
+    const key = (client.handshake.query.key as string).split(" ").pop();
     const judgeClient = await this.judgeClientService.findJudgeClientByKey(key);
 
     if (!judgeClient) {
@@ -136,7 +143,10 @@ export class JudgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // Now we are ready for consuming task
     client.emit("ready", judgeClient.name, this.configService.config.judge);
 
-    const message = `Judge client ${client.id} (${judgeClient.name}) connected from ${client.handshake.address}.`;
+    const message = `Judge client ${client.id} (${judgeClient.name}) connected from ${proxyAddr(
+      client.request,
+      this.configService.config.server.trustProxy
+    )}.`;
     logger.log(message);
     if ((await this.redis.del(REDIS_KEY_JUDGE_CLIENT_TEMPORARILY_DISCONNENTED.format(judgeClient.id))) === 0) {
       // If the judge client is NOT temporarily disconnected, report it with event-reporter
@@ -226,7 +236,7 @@ export class JudgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
             uuid: fileUuid,
             downloadFilename: null,
             noExpire: true,
-            useAlternativeEndpointFor: AlternativeUrlFor.Judge
+            signFor: MinioSignFor.Judge
           })
       )
     );

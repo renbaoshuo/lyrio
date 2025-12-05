@@ -311,7 +311,7 @@ export const migrationSubmission: MigrationInterface = {
             const fileUuid = uuidFromSubmission(oldSubmission.id);
 
             // Find existing record in new database first to continue a failed migration
-            const fileEntity = (await entityManager.findOne(FileEntity, { uuid: fileUuid })) || new FileEntity();
+            const fileEntity = (await entityManager.findOneBy(FileEntity, { uuid: fileUuid })) || new FileEntity();
             if (!fileEntity.uuid) {
               fileEntity.size = stat.size;
               fileEntity.uploadTime = new Date();
@@ -353,9 +353,10 @@ export const migrationSubmission: MigrationInterface = {
               let oldCompileMessage = oldResult.compile.message || "";
 
               // Replace confusing error message
-              const matchResult = /Your source code compiled to (\d+) bytes which is too big, too thick, too long for us\.\./.exec(
-                oldCompileMessage
-              );
+              const matchResult =
+                /Your source code compiled to (\d+) bytes which is too big, too thick, too long for us\.\./.exec(
+                  oldCompileMessage
+                );
               if (matchResult) {
                 oldCompileMessage = `The source code compiled to ${matchResult[1]} bytes, exceeding the size limit.`;
               }

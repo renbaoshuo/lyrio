@@ -1,8 +1,8 @@
 import { ApiProperty } from "@nestjs/swagger";
 
-import { UserMetaDto } from "@/user/dto";
-
 import { ContestAnnouncementLocalizedContentDto } from "./contest-announcement-localized-content.dto";
+
+import { UserMetaDto } from "@/user/dto";
 
 export class ContestAnnouncementDto {
   @ApiProperty()

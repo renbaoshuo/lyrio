@@ -689,7 +689,7 @@ export class ContestController {
       (await this.contestService.isRegistered(contest, currentUser)) &&
       !(await this.contestService.isEndedFor(contest, currentUser))
     ) {
-      const ranklistDuringContest = contestMeta.contestOptions.ranklistDuringContest;
+      const { ranklistDuringContest } = contestMeta.contestOptions;
       if (ranklistDuringContest === "None" || request.realRanklist)
         return {
           error: QueryRanklistResponseError.PERMISSION_DENIED

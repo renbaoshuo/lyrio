@@ -37,7 +37,6 @@ import {
   GetDiscussionAndRepliesResponseError,
   QueryDiscussionsRequestDto,
   QueryDiscussionsResponseDto,
-  QueryDiscussionsResponseError,
   UpdateDiscussionRequestDto,
   UpdateDiscussionResponseDto,
   UpdateDiscussionResponseError,
@@ -411,7 +410,9 @@ export class DiscussionController {
             (async () =>
               Object.fromEntries(
                 await Promise.all(
-                  (await this.userService.findUsersByExistingIds(replyEntities.map(reply => reply.publisherId))).map(
+                  (
+                    await this.userService.findUsersByExistingIds(replyEntities.map(reply => reply.publisherId))
+                  ).map(
                     async user =>
                       [user.id, await this.userService.getUserMeta(user, currentUser)] as [number, UserMetaDto]
                   )

@@ -23,9 +23,8 @@ type ParticipantDetailInfoIcpc = Record<
 
 @Injectable()
 export class ContestTypeIcpcService
-  implements ContestTypeServiceInterface<ContestTypeOptionsIcpc, ParticipantDetailInfoIcpc> {
-  constructor() {}
-
+  implements ContestTypeServiceInterface<ContestTypeOptionsIcpc, ParticipantDetailInfoIcpc>
+{
   validateConfig(contestTypeOptions: ContestTypeOptionsIcpc): boolean {
     if (!(Number.isSafeInteger(contestTypeOptions.penaltyTime) && contestTypeOptions.penaltyTime >= 0)) return false;
     restrictProperties(contestTypeOptions, ["penaltyTime"]);

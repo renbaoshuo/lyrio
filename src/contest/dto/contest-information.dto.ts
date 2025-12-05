@@ -1,13 +1,24 @@
 import { ApiProperty } from "@nestjs/swagger";
 
-import { IsArray, IsDateString, IsEnum, IsInt, IsObject, IsString, MaxLength, Min, ValidateNested } from "class-validator";
+import {
+  IsArray,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsObject,
+  IsString,
+  MaxLength,
+  Min,
+  ValidateNested
+} from "class-validator";
 import { Type } from "class-transformer";
 
 import { Locale } from "@/common/locale.type";
 import { If } from "@/common/validators";
 
-import { ContestPublicness, ContestType } from "../contest.entity";
 import { ContestOptionsDto } from "./contest-options.dto";
+
+import { ContestPublicness, ContestType } from "../contest.entity";
 
 export class ContestLocalizedContentDto {
   @ApiProperty()

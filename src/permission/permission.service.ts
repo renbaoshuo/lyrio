@@ -1,7 +1,7 @@
 import { forwardRef, Inject, Injectable } from "@nestjs/common";
-import { InjectRepository, InjectConnection } from "@nestjs/typeorm";
+import { InjectRepository, InjectDataSource } from "@nestjs/typeorm";
 
-import { Repository, EntityManager, Connection, FindConditions } from "typeorm";
+import { Repository, EntityManager, DataSource, FindOptionsWhere } from "typeorm";
 
 import { UserEntity } from "@/user/user.entity";
 import { UserService } from "@/user/user.service";
@@ -51,8 +51,8 @@ export interface AccessControlListWithSubjectMeta<PermissionLevel extends number
 @Injectable()
 export class PermissionService {
   constructor(
-    @InjectConnection()
-    private connection: Connection,
+    @InjectDataSource()
+    private connection: DataSource,
     @InjectRepository(PermissionForUserEntity)
     private readonly permissionForUserRepository: Repository<PermissionForUserEntity>,
     @InjectRepository(PermissionForGroupEntity)
@@ -164,7 +164,7 @@ export class PermissionService {
     objectType?: PermissionObjectType,
     transactionalEntityManager?: EntityManager
   ): Promise<void> {
-    const match: FindConditions<PermissionForUserEntity> = {};
+    const match: FindOptionsWhere<PermissionForUserEntity> = {};
     if (objectId) match.objectId = objectId;
     if (objectType) match.objectType = objectType;
     if (user) match.userId = user.id;
@@ -179,7 +179,7 @@ export class PermissionService {
     objectType?: PermissionObjectType,
     transactionalEntityManager?: EntityManager
   ): Promise<void> {
-    const match: FindConditions<PermissionForGroupEntity> = {};
+    const match: FindOptionsWhere<PermissionForGroupEntity> = {};
     if (objectId) match.objectId = objectId;
     if (objectType) match.objectType = objectType;
     if (group) match.groupId = group.id;
@@ -193,7 +193,7 @@ export class PermissionService {
     objectId: number,
     objectType: PermissionObjectType
   ): Promise<PermissionLevel> {
-    const permissionForUser = await this.permissionForUserRepository.findOne({
+    const permissionForUser = await this.permissionForUserRepository.findOneBy({
       objectId,
       objectType,
       userId: user.id
@@ -207,7 +207,7 @@ export class PermissionService {
     objectId: number,
     objectType: PermissionObjectType
   ): Promise<PermissionLevel> {
-    const permissionForGroup = await this.permissionForGroupRepository.findOne({
+    const permissionForGroup = await this.permissionForGroupRepository.findOneBy({
       objectId,
       objectType,
       groupId: group.id
@@ -316,12 +316,51 @@ export class PermissionService {
     return Math.max(userPermission, queryResult.maxPermissionLevel) as PermissionLevel;
   }
 
-  async getObjectAccessControlListForUser<PermissionLevel extends number>(
+  async getUsersWithExactPermissionLevel<PermissionLevel extends number>(
+    objectId: number,
+    objectType: PermissionObjectType,
+    permissionLevel: PermissionLevel
+  ): Promise<number[]> {
+    return (
+      await this.permissionForUserRepository.findBy({
+        objectId,
+        objectType,
+        permissionLevel
+      })
+    ).map(permissionForUser => permissionForUser.userId);
+  }
+
+  async getGroupsWithExactPermissionLevel<PermissionLevel extends number>(
+    objectId: number,
+    objectType: PermissionObjectType,
+    permissionLevel: PermissionLevel
+  ): Promise<number[]> {
+    return (
+      await this.permissionForGroupRepository.findBy({
+        objectId,
+        objectType,
+        permissionLevel
+      })
+    ).map(permissionForGroup => permissionForGroup.groupId);
+  }
+
+  async getUsersAndGroupsWithExactPermissionLevel<PermissionLevel extends number>(
+    objectId: number,
+    objectType: PermissionObjectType,
+    permissionLevel: PermissionLevel
+  ): Promise<[userIds: number[], groupIds: number[]]> {
+    return [
+      await this.getUsersWithExactPermissionLevel(objectId, objectType, permissionLevel),
+      await this.getGroupsWithExactPermissionLevel(objectId, objectType, permissionLevel)
+    ];
+  }
+
+  async getUserPermissionListOfObject<PermissionLevel extends number>(
     objectId: number,
     objectType: PermissionObjectType
   ): Promise<AccessControlListItemForUser<PermissionLevel>[]> {
     return (
-      await this.permissionForUserRepository.find({
+      await this.permissionForUserRepository.findBy({
         objectId,
         objectType
       })
@@ -336,7 +375,7 @@ export class PermissionService {
     objectType: PermissionObjectType
   ): Promise<AccessControlListItemForGroup<PermissionLevel>[]> {
     return (
-      await this.permissionForGroupRepository.find({
+      await this.permissionForGroupRepository.findBy({
         objectId,
         objectType
       })
@@ -351,7 +390,7 @@ export class PermissionService {
     objectType: PermissionObjectType
   ): Promise<AccessControlList<PermissionLevel>> {
     const [userPermissions, groupPermissions] = await Promise.all([
-      this.getObjectAccessControlListForUser<PermissionLevel>(objectId, objectType),
+      this.getUserPermissionListOfObject<PermissionLevel>(objectId, objectType),
       this.getObjectAccessControlListForGroup<PermissionLevel>(objectId, objectType)
     ]);
 
@@ -367,7 +406,7 @@ export class PermissionService {
     currentUser: UserEntity
   ): Promise<AccessControlListWithSubjectMeta<PermissionLevel>> {
     const [userPermissions, groupPermissions] = await Promise.all([
-      this.getObjectAccessControlListForUser<PermissionLevel>(objectId, objectType).then(list =>
+      this.getUserPermissionListOfObject<PermissionLevel>(objectId, objectType).then(list =>
         Promise.all(
           list.map(async ({ userId, permissionLevel }) => ({
             user: await this.userService.getUserMeta(await this.userService.findUserById(userId), currentUser),
@@ -422,7 +461,7 @@ export class PermissionService {
             userPermissions.map(({ userId, permissionLevel }) => ({
               objectId,
               objectType,
-              userId: userId,
+              userId,
               permissionLevel
             }))
           )
@@ -438,7 +477,7 @@ export class PermissionService {
             groupPermissions.map(({ groupId, permissionLevel }) => ({
               objectId,
               objectType,
-              groupId: groupId,
+              groupId,
               permissionLevel
             }))
           )

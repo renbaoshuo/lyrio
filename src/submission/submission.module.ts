@@ -8,7 +8,7 @@ import { JudgeModule } from "@/judge/judge.module";
 import { UserModule } from "@/user/user.module";
 import { AuditModule } from "@/audit/audit.module";
 import { FileModule } from "@/file/file.module";
-
+import { MetricsModule } from "@/metrics/metrics.module";
 import { ContestModule } from "@/contest/contest.module";
 
 import { SubmissionEntity } from "./submission.entity";
@@ -30,6 +30,7 @@ import { SubmissionStatisticsService } from "./submission-statistics.service";
     forwardRef(() => UserModule),
     forwardRef(() => AuditModule),
     forwardRef(() => FileModule),
+    forwardRef(() => MetricsModule),
     forwardRef(() => ContestModule)
   ],
   providers: [SubmissionService, SubmissionProgressService, SubmissionProgressGateway, SubmissionStatisticsService],

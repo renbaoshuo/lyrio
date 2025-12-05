@@ -145,20 +145,23 @@ export class ContestService {
 
     this.contestAnnouncementPushService = this.pushGateway.registerPushType("ContestAnnouncement", {
       getInitialMessageForSubscription: async subscription => {
-        const contestAnnouncements = await this.contestAnnouncementRepository.find({
+        const contestAnnouncements = await this.contestAnnouncementRepository.findBy({
           contestId: subscription.contestId,
           id: MoreThan(subscription.latestAnnouncementId)
         });
-        return Object.fromEntries((await this.getContestAnnouncementDtos(contestAnnouncements)).map(announcement => [announcement.id, announcement]));
+        return Object.fromEntries(
+          (await this.getContestAnnouncementDtos(contestAnnouncements)).map(announcement => [
+            announcement.id,
+            announcement
+          ])
+        );
       },
-      getRoomForSubscription: subscription => {
-        return `${subscription.contestId}`;
-      }
+      getRoomForSubscription: subscription => `${subscription.contestId}`
     });
 
     this.contestIssuePushService = this.pushGateway.registerPushType("ContestIssue", {
       getInitialMessageForSubscription: async subscription => {
-        const contestIssues = await this.contestIssueRepository.find(
+        const contestIssues = await this.contestIssueRepository.findBy(
           subscription.userId
             ? {
                 contestId: subscription.contestId,
@@ -172,22 +175,21 @@ export class ContestService {
         );
         return Object.fromEntries((await this.getContestIssueDtos(contestIssues)).map(issue => [issue.id, issue]));
       },
-      getRoomForSubscription: subscription => {
-        return subscription.userId ? `${subscription.contestId}:${subscription.userId}` : `${subscription.contestId}`;
-      }
+      getRoomForSubscription: subscription =>
+        subscription.userId ? `${subscription.contestId}:${subscription.userId}` : `${subscription.contestId}`
     });
   }
 
   async findContestById(id: number): Promise<ContestEntity> {
-    return id && (await this.contestRepository.findOne(id));
+    return id && (await this.contestRepository.findOneBy({ id }));
   }
 
   async findContestIssueById(id: number): Promise<ContestIssueEntity> {
-    return id && (await this.contestIssueRepository.findOne(id));
+    return id && (await this.contestIssueRepository.findOneBy({ id }));
   }
 
   async findContestAnnouncementById(id: number): Promise<ContestAnnouncementEntity> {
-    return id && (await this.contestAnnouncementRepository.findOne(id));
+    return id && (await this.contestAnnouncementRepository.findOneBy({ id }));
   }
 
   async findContestsByExistingIds(contestIds: number[]): Promise<ContestEntity[]> {
@@ -199,7 +201,9 @@ export class ContestService {
   }
 
   async getContestMeta(contestId: number): Promise<ContestMetaDto>;
+
   async getContestMeta(contest: ContestEntity, locale?: Locale): Promise<ContestMetaDto>;
+
   async getContestMeta(contestOrId: ContestEntity | number, locale?: Locale): Promise<ContestMetaDto> {
     const contestId = typeof contestOrId === "object" ? contestOrId.id : contestOrId;
 
@@ -209,7 +213,7 @@ export class ContestService {
       else {
         const [contest, contestConfig, contestProblems] = await Promise.all([
           typeof contestOrId === "object" ? contestOrId : this.findContestById(contestOrId),
-          this.contestConfigRepository.findOne(contestId),
+          this.contestConfigRepository.findOneBy({ contestId }),
           this.contestProblemRepository.find({ where: { contestId }, order: { orderId: "ASC" } })
         ]);
         const meta: ContestMetaDto = {
@@ -220,7 +224,7 @@ export class ContestService {
           participantDuration: contest.participantDuration,
           publicness: contest.publicness,
           locales: contest.locales,
-          problems: contestProblems.map(p => ({ problemId: p.problemId, alias: p.alias})),
+          problems: contestProblems.map(p => ({ problemId: p.problemId, alias: p.alias })),
           contestOptions: contestConfig.contestOptions,
           contestTypeOptions: contestConfig.contestTypeOptions
         };
@@ -286,7 +290,7 @@ export class ContestService {
       .then(users => Promise.all(users.map(user => this.userService.getUserMeta(user))))
       .then(users => new Map(users.map(user => [user.id, user])));
 
-    return contestAnnouncements.map((announcement, i) => ({
+    return contestAnnouncements.map(announcement => ({
       id: announcement.id,
       contestId: announcement.contestId,
       publisher: publishers.get(announcement.publisherId),
@@ -297,7 +301,12 @@ export class ContestService {
 
   async getContestIssueDtos(contestIssues: ContestIssueEntity[]): Promise<ContestIssueDto[]> {
     const users = await this.userService
-      .findUsersByExistingIds(contestIssues.map(issue => [issue.submitterId, issue.replierId]).flat().filter(x => x))
+      .findUsersByExistingIds(
+        contestIssues
+          .map(issue => [issue.submitterId, issue.replierId])
+          .flat()
+          .filter(x => x)
+      )
       .then(users => Promise.all(users.map(user => this.userService.getUserMeta(user))))
       .then(users => new Map(users.map(user => [user.id, user])));
 
@@ -314,14 +323,14 @@ export class ContestService {
   }
 
   async getContestProblem(contest: ContestEntity, alias: string): Promise<ContestProblemEntity> {
-    return await this.contestProblemRepository.findOne({
+    return await this.contestProblemRepository.findOneBy({
       contestId: contest.id,
       alias
     });
   }
 
   async findParticipant(contest: ContestEntity, user: UserEntity): Promise<ContestParticipantEntity> {
-    return await this.contestParticipantRepository.findOne({
+    return await this.contestParticipantRepository.findOneBy({
       contestId: contest.id,
       userId: user.id
     });
@@ -332,7 +341,7 @@ export class ContestService {
       (await this.contestProblemRepository.count({
         where: contest ? { problemId: problem.id, contestId: contest.id } : { problemId: problem.id },
         take: 1
-      })) != 0
+      })) !== 0
     );
   }
 
@@ -343,7 +352,7 @@ export class ContestService {
       .addSelect("contestId")
       .where("contestId IN (:...ids)", { ids: contests.map(c => c.id) })
       .groupBy("contestId")
-      .getRawMany<{ contestId: number, count: number }>();
+      .getRawMany<{ contestId: number; count: number }>();
     return Object.fromEntries(queryResult.map(({ contestId, count }) => [contestId, Number(count)]));
   }
 
@@ -391,6 +400,7 @@ export class ContestService {
               ContestPermissionLevel.Inspect
             ))
           );
+        return false;
 
       // Everyone can participate a PublicParticipation contest
       // Who has participate permission can participate a non-public contest
@@ -408,6 +418,7 @@ export class ContestService {
           )
         )
           return true;
+        return false;
 
       // Who has inspect permission can inspect a contest
       // Admins can inspect any contest
@@ -434,6 +445,9 @@ export class ContestService {
             PermissionObjectType.Contest,
             ContestPermissionLevel.Modify
           );
+
+      default:
+        return false;
     }
   }
 
@@ -474,7 +488,8 @@ export class ContestService {
 
   async getUserRoleInContest(user: UserEntity, contest: ContestEntity): Promise<ContestUserRole> {
     if (!user) return null;
-    if (await this.userPrivilegeService.userHasPrivilege(user, UserPrivilegeType.ManageContest)) return ContestUserRole.Admin;
+    if (await this.userPrivilegeService.userHasPrivilege(user, UserPrivilegeType.ManageContest))
+      return ContestUserRole.Admin;
 
     const permissionLevel = await this.permissionService.getUserOrItsGroupsMaxPermissionLevel<ContestPermissionLevel>(
       user,
@@ -531,11 +546,17 @@ export class ContestService {
   }
 
   async getContestAllLocalizedContents(contest: ContestEntity) {
-    return await Promise.all(contest.locales.map(async locale => ({
-      name: await this.localizedContentService.get(contest.id, LocalizedContentType.ContestName, locale),
-      description: await this.localizedContentService.get(contest.id, LocalizedContentType.ContestDescription, locale),
-      locale
-    })));
+    return await Promise.all(
+      contest.locales.map(async locale => ({
+        name: await this.localizedContentService.get(contest.id, LocalizedContentType.ContestName, locale),
+        description: await this.localizedContentService.get(
+          contest.id,
+          LocalizedContentType.ContestDescription,
+          locale
+        ),
+        locale
+      }))
+    );
   }
 
   async getContestLocalizedDescription(contest: ContestEntity, locale: Locale): Promise<string> {
@@ -551,7 +572,7 @@ export class ContestService {
       const problems: { problem: ProblemEntity; alias: string }[] = [];
       for (const { problemId, alias } of contestInformation.problems) {
         const [problem, unlock] = await this.problemService.lockProblemById(problemId, "Read");
-        problems.push({ problem, alias});
+        problems.push({ problem, alias });
         unlockProblems.push(unlock);
       }
 
@@ -564,17 +585,23 @@ export class ContestService {
   /**
    * @return `ContestEntity` or error.
    */
-  async createContest(contestInformation: ContestInformationDto): Promise<ContestEntity | "INVALID_CONTEST_TYPE_OPTIONS" | "NO_SUCH_PROBLEM" | "INVALID_TIME_RANGE" | "EMPTY_PROBLEM_LIST"> {
+  async createContest(
+    contestInformation: ContestInformationDto
+  ): Promise<
+    ContestEntity | "INVALID_CONTEST_TYPE_OPTIONS" | "NO_SUCH_PROBLEM" | "INVALID_TIME_RANGE" | "EMPTY_PROBLEM_LIST"
+  > {
     // Validate time range
     const startTime = new Date(contestInformation.startTime);
     const endTime = new Date(contestInformation.endTime);
-    if (isNaN(startTime.getTime()) || isNaN(endTime.getTime()) || endTime <= startTime) {
+    if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime()) || endTime <= startTime) {
       return "INVALID_TIME_RANGE";
     }
 
     // Validate participantDuration if present
-    if (contestInformation.participantDuration != null &&
-        (contestInformation.participantDuration <= 0 || !Number.isSafeInteger(contestInformation.participantDuration))) {
+    if (
+      contestInformation.participantDuration != null &&
+      (contestInformation.participantDuration <= 0 || !Number.isSafeInteger(contestInformation.participantDuration))
+    ) {
       return "INVALID_TIME_RANGE";
     }
 
@@ -584,9 +611,10 @@ export class ContestService {
     }
 
     if (
-      !this.contestTypeFactoryService
-        .type(contestInformation.type)
-        .validateConfig(contestInformation.contestTypeOptions, contestInformation.problems.map(p => p.problemId))
+      !this.contestTypeFactoryService.type(contestInformation.type).validateConfig(
+        contestInformation.contestTypeOptions,
+        contestInformation.problems.map(p => p.problemId)
+      )
     )
       return "INVALID_CONTEST_TYPE_OPTIONS";
 
@@ -652,18 +680,25 @@ export class ContestService {
     contest: ContestEntity,
     contestInformation: ContestInformationDto
   ): Promise<
-    "NO_SUCH_PROBLEM" | "INVALID_CONTEST_TYPE_OPTIONS" | "SUBMITTED_EARLIER_THAN_NEW_START_TIME" | "DELETING_PROBLEM_SUMITTED" | "INVALID_TIME_RANGE" | "EMPTY_PROBLEM_LIST"
+    | "NO_SUCH_PROBLEM"
+    | "INVALID_CONTEST_TYPE_OPTIONS"
+    | "SUBMITTED_EARLIER_THAN_NEW_START_TIME"
+    | "DELETING_PROBLEM_SUMITTED"
+    | "INVALID_TIME_RANGE"
+    | "EMPTY_PROBLEM_LIST"
   > {
     // Validate time range
     const startTime = new Date(contestInformation.startTime);
     const endTime = new Date(contestInformation.endTime);
-    if (isNaN(startTime.getTime()) || isNaN(endTime.getTime()) || endTime <= startTime) {
+    if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime()) || endTime <= startTime) {
       return "INVALID_TIME_RANGE";
     }
 
     // Validate participantDuration if present
-    if (contestInformation.participantDuration != null &&
-        (contestInformation.participantDuration <= 0 || !Number.isSafeInteger(contestInformation.participantDuration))) {
+    if (
+      contestInformation.participantDuration != null &&
+      (contestInformation.participantDuration <= 0 || !Number.isSafeInteger(contestInformation.participantDuration))
+    ) {
       return "INVALID_TIME_RANGE";
     }
 
@@ -673,9 +708,10 @@ export class ContestService {
     }
 
     if (
-      !this.contestTypeFactoryService
-        .type(contest.type)
-        .validateConfig(contestInformation.contestTypeOptions, contestInformation.problems.map(p => p.problemId))
+      !this.contestTypeFactoryService.type(contest.type).validateConfig(
+        contestInformation.contestTypeOptions,
+        contestInformation.problems.map(p => p.problemId)
+      )
     )
       return "INVALID_CONTEST_TYPE_OPTIONS";
 
@@ -684,7 +720,7 @@ export class ContestService {
     if (submission && submission.submitTime < startTime) return "SUBMITTED_EARLIER_THAN_NEW_START_TIME";
 
     // Check if any being deleted problems have been submitted
-    const contestProblems = await this.contestProblemRepository.find({ contestId: contest.id });
+    const contestProblems = await this.contestProblemRepository.findBy({ contestId: contest.id });
     for (const { problemId } of contestProblems) {
       // eslint-disable-next-line no-await-in-loop
       if (
@@ -708,7 +744,7 @@ export class ContestService {
         contest.locales = newLocales;
         await transactionalEntityManager.save(contest);
 
-        const contestConfig = await this.contestConfigRepository.findOne({ contestId: contest.id });
+        const contestConfig = await this.contestConfigRepository.findOneBy({ contestId: contest.id });
         contestConfig.contestId = contest.id;
         contestConfig.contestOptions = contestInformation.contestOptions;
         contestConfig.contestTypeOptions = contestInformation.contestTypeOptions;
@@ -818,8 +854,11 @@ export class ContestService {
     return (await this.getContestMeta(typeof contestOrId === "number" ? contestOrId : contestOrId.id)).contestOptions;
   }
 
-  async getContestTypeOptions<ContestTypeOptions = unknown>(contestOrId: ContestEntity | number): Promise<ContestTypeOptions> {
-    return (await this.getContestMeta(typeof contestOrId === "number" ? contestOrId : contestOrId.id)).contestTypeOptions as ContestTypeOptions;
+  async getContestTypeOptions<ContestTypeOptions = unknown>(
+    contestOrId: ContestEntity | number
+  ): Promise<ContestTypeOptions> {
+    return (await this.getContestMeta(typeof contestOrId === "number" ? contestOrId : contestOrId.id))
+      .contestTypeOptions as ContestTypeOptions;
   }
 
   async setContestAccessControlList(
@@ -881,7 +920,7 @@ export class ContestService {
   }
 
   async deleteContestAnnouncement(contestAnnouncement: ContestAnnouncementEntity): Promise<void> {
-    const {id, contestId} = contestAnnouncement;
+    const { id, contestId } = contestAnnouncement;
     await this.contestAnnouncementRepository.remove(contestAnnouncement);
 
     this.contestAnnouncementPushService.push(`${contestId}`, {
@@ -922,7 +961,7 @@ export class ContestService {
   }
 
   async deleteContestIssue(contestIssue: ContestIssueEntity): Promise<void> {
-    const {id, contestId, submitterId} = contestIssue;
+    const { id, contestId, submitterId } = contestIssue;
     await this.contestIssueRepository.remove(contestIssue);
 
     const message: Record<number, ContestIssueDto> = { [id]: null };
@@ -964,8 +1003,8 @@ export class ContestService {
     isReal: boolean
   ): Promise<{ submitted: number; accepted: number }> {
     const [submitted, accepted] = await Promise.all([
-      this.contestParticipantProblemStatisticsRepository.count({ contestId, problemId, isReal, submitted: true }),
-      this.contestParticipantProblemStatisticsRepository.count({ contestId, problemId, isReal, accepted: true })
+      this.contestParticipantProblemStatisticsRepository.countBy({ contestId, problemId, isReal, submitted: true }),
+      this.contestParticipantProblemStatisticsRepository.countBy({ contestId, problemId, isReal, accepted: true })
     ]);
     return { submitted, accepted };
   }
@@ -1062,7 +1101,7 @@ export class ContestService {
     const firstRank =
       result.length > 0 &&
       1 +
-        (await this.contestParticipantRepository.count({
+        (await this.contestParticipantRepository.countBy({
           contestId: contest.id,
           [scoreColumn]: MoreThan(result[0][scoreColumn])
         }));
@@ -1071,7 +1110,7 @@ export class ContestService {
   }
 
   async isRegistered(contest: ContestEntity, user: UserEntity) {
-    return (await this.contestParticipantRepository.count({ contestId: contest.id, userId: user.id })) !== 0;
+    return (await this.contestParticipantRepository.countBy({ contestId: contest.id, userId: user.id })) !== 0;
   }
 
   isStarted(contest: ContestEntity, now?: Date) {
@@ -1094,7 +1133,7 @@ export class ContestService {
 
     // For virtual contests, check individual participant end time
     if (contest.participantDuration != null) {
-      const participant = await this.contestParticipantRepository.findOne({ contestId: contest.id, userId: user.id });
+      const participant = await this.contestParticipantRepository.findOneBy({ contestId: contest.id, userId: user.id });
       if (!participant || !participant.startTime) return this.isEnded(contest, now);
       const endTime = moment(participant.startTime).add(contest.participantDuration, "s").toDate();
       return now > endTime;
@@ -1123,6 +1162,7 @@ export class ContestService {
       if (contestOptions.ranklistDuringContest === "Real") return isAcceptedReal(submission);
       else if (contestOptions.ranklistDuringContest === "Pretests")
         return submission?.pretestsStatus === SubmissionStatus.Accepted;
+      return false;
     };
 
     // If this submission is submitted after ranklist freezed, or the ranlist is not visible
@@ -1150,7 +1190,7 @@ export class ContestService {
       await this.lockService.lock(
         `update-contest-problem-first-accepted-submission:${contestId}:${problemId}`,
         async () => {
-          const contestProblem = await this.contestProblemRepository.findOne({ contestId, problemId });
+          const contestProblem = await this.contestProblemRepository.findOneBy({ contestId, problemId });
 
           const updateFirstAccepted = async (isReal: boolean) => {
             const firstAcceptedSubmissionIdKey = isReal
@@ -1177,9 +1217,8 @@ export class ContestService {
                   .where({
                     contestId,
                     problemId,
-                    [isReal || contestOptions.ranklistDuringContest === "Real"
-                      ? "status"
-                      : "pretestsStatus"]: SubmissionStatus.Accepted
+                    [isReal || contestOptions.ranklistDuringContest === "Real" ? "status" : "pretestsStatus"]:
+                      SubmissionStatus.Accepted
                   });
 
                 if (!isReal && freezeRanklistTime)
@@ -1189,6 +1228,7 @@ export class ContestService {
                 return true;
               }
             }
+            return false;
           };
 
           if (
@@ -1206,7 +1246,7 @@ export class ContestService {
 
     // Maintain the participant detail
     await this.lockService.lock(`update-contest-participant-detail:${contestId}:${submitterId}`, async () => {
-      const participant = await this.contestParticipantRepository.findOne({ contestId, userId: submitterId });
+      const participant = await this.contestParticipantRepository.findOneBy({ contestId, userId: submitterId });
 
       // If participant is null, the user never registered for this contest
       // This shouldn't happen in normal cases but could occur due to race conditions or data corruption
@@ -1302,7 +1342,7 @@ export class ContestService {
 
           // Update the participant's problem statistics info
           if (statistics?.submitted || statistics?.accepted) {
-            let statisticsEntity = await this.contestParticipantProblemStatisticsRepository.findOne({
+            let statisticsEntity = await this.contestParticipantProblemStatisticsRepository.findOneBy({
               contestId,
               problemId,
               userId: submitterId,

@@ -1,6 +1,8 @@
-import { Locale } from "@/common/locale.type";
 import { ApiProperty } from "@nestjs/swagger";
+
 import { IsEnum, IsInt, Min } from "class-validator";
+
+import { Locale } from "@/common/locale.type";
 
 export class QueryContestsRequestDto {
   @ApiProperty()

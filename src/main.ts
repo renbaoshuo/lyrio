@@ -34,7 +34,8 @@ export const appGitRepoInfo = getGitRepoInfo();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function initialize(): Promise<[packageInfo: any, configService: ConfigService, app: NestExpressApplication]> {
   // Get package info
-  const packageInfo = require("../package.json"); // eslint-disable-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, import/extensions
+  const packageInfo = require("../package.json");
   const appVersion = `v${packageInfo.version}`;
   const gitRepoVersion = appGitRepoInfo.abbreviatedSha
     ? ` (Git revision ${appGitRepoInfo.abbreviatedSha} on ${moment(appGitRepoInfo.committerDate).format(
@@ -112,8 +113,8 @@ async function startApp(packageInfo: any, configService: ConfigService, app: Nes
 async function bootstrap() {
   const [packageInfo, configService, app] = await initialize();
 
-  // If the SYZOJ_NG_MIGRATION_CONFIG_FILE enviroment variable presents, start migration
-  const migrationConfigFile = process.env.SYZOJ_NG_MIGRATION_CONFIG_FILE;
+  // If the LYRIO_MIGRATION_CONFIG_FILE enviroment variable presents, start migration
+  const migrationConfigFile = process.env.LYRIO_MIGRATION_CONFIG_FILE;
   if (migrationConfigFile)
     // Start migration
     await runMigration(app, migrationConfigFile);

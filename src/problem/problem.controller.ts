@@ -5,8 +5,7 @@ import { Recaptcha } from "@nestlab/google-recaptcha";
 
 import { ConfigService } from "@/config/config.service";
 import { UserService } from "@/user/user.service";
-import { GroupService } from "@/group/group.service";
-import { AlternativeUrlFor, FileService } from "@/file/file.service";
+import { MinioSignFor, FileService } from "@/file/file.service";
 import { CurrentUser } from "@/common/user.decorator";
 import { UserEntity } from "@/user/user.entity";
 import { UserPrivilegeService, UserPrivilegeType } from "@/user/user-privilege.service";
@@ -136,8 +135,10 @@ export class ProblemController {
     );
 
     if (request.keyword && request.keywordMatchesId) {
-      const matchId = request.keyword.substr(0, 1).toUpperCase() === "P" ? Number(request.keyword.slice(1)) || 0 : 0;
-      const matchDisplayId = Number(request.keyword) || 0;
+      const safeParseInteger = (str: string) => (Number.isSafeInteger(Number(str)) ? Number(str) : 0);
+      const matchId =
+        request.keyword.substr(0, 1).toUpperCase() === "P" ? safeParseInteger(request.keyword.slice(1)) || 0 : 0;
+      const matchDisplayId = safeParseInteger(request.keyword) || 0;
       if (!problems.some(problem => problem.id === matchId || problem.displayId === matchDisplayId)) {
         const problem = matchId
           ? await this.problemService.findProblemById(matchId)
@@ -397,13 +398,14 @@ export class ProblemController {
         : problem.locales[0];
 
       promises.push(
-        this.problemService
-          .getProblemLocalizedContent(problem, resultLocale)
-          .then(contentSections => (result.localizedContentsOfLocale = {
-            locale: resultLocale,
-            title: null,
-            contentSections
-          }))
+        this.problemService.getProblemLocalizedContent(problem, resultLocale).then(
+          contentSections =>
+            (result.localizedContentsOfLocale = {
+              locale: resultLocale,
+              title: null,
+              contentSections
+            })
+        )
       );
     }
 
@@ -792,7 +794,7 @@ export class ProblemController {
           downloadUrl: await this.fileService.signDownloadLink({
             uuid: problemFile.uuid,
             downloadFilename: problemFile.filename,
-            useAlternativeEndpointFor: AlternativeUrlFor.User
+            signFor: MinioSignFor.UserDownload
           })
         }))
       )

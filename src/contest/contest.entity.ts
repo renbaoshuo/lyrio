@@ -1,6 +1,7 @@
 import { Column, Entity, Index, OneToOne, PrimaryGeneratedColumn } from "typeorm";
 
 import { Locale } from "@/common/locale.type";
+
 import { ContestConfigEntity } from "./contest-config.entity";
 
 export enum ContestType {

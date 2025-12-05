@@ -11,7 +11,7 @@ import { UserPrivilegeService, UserPrivilegeType } from "@/user/user-privilege.s
 import { ConfigService } from "@/config/config.service";
 import { ProblemEntity } from "@/problem/problem.entity";
 import { AuditLogObjectType, AuditService } from "@/audit/audit.service";
-import { AlternativeUrlFor, FileService } from "@/file/file.service";
+import { MinioSignFor, FileService } from "@/file/file.service";
 import { ProblemTypeFactoryService } from "@/problem-type/problem-type-factory.service";
 import { ContestService, ContestUserRole } from "@/contest/contest.service";
 
@@ -197,7 +197,8 @@ export class SubmissionController {
     let filterProblem: ProblemEntity = null;
     if (request.problemId || request.problemDisplayId || (filterContest && request.contestProblemAlias)) {
       if (request.problemId) filterProblem = await this.problemService.findProblemById(request.problemId);
-      else if (request.problemDisplayId) filterProblem = await this.problemService.findProblemByDisplayId(request.problemDisplayId);
+      else if (request.problemDisplayId)
+        filterProblem = await this.problemService.findProblemByDisplayId(request.problemDisplayId);
       else if (request.contestProblemAlias) {
         const contestProblem = await this.contestService.getContestProblem(filterContest, request.contestProblemAlias);
         if (contestProblem) filterProblem = await this.problemService.findProblemById(contestProblem.problemId);
@@ -352,10 +353,8 @@ export class SubmissionController {
       this.userPrivilegeService.userHasPrivilege(currentUser, UserPrivilegeType.ManageProblem)
     ]);
 
-    const [hasViewPermission, progressVisibilities, canViewContent] = await this.submissionService.getSubmissionVisibilityOfUser(
-      currentUser,
-      submission
-    );
+    const [hasViewPermission, progressVisibilities, canViewContent] =
+      await this.submissionService.getSubmissionVisibilityOfUser(currentUser, submission);
 
     if (!hasViewPermission)
       return {
@@ -434,7 +433,7 @@ export class SubmissionController {
       url: await this.fileService.signDownloadLink({
         uuid: submissionDetail.fileUuid,
         downloadFilename: request.filename,
-        useAlternativeEndpointFor: AlternativeUrlFor.User
+        signFor: MinioSignFor.UserDownload
       })
     };
   }
